@@ -1,0 +1,46 @@
+name: Build APK from ZIP
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        run: |
+          set -e
+          ZIP=$(ls -1 *.zip | head -n1)
+          test -n "$ZIP"
+          mkdir project_tmp
+          unzip -q "$ZIP" -d project_tmp
+          P=$(find project_tmp -maxdepth 2 -name package.json | head -n1)
+          test -n "$P"
+          mv "$(dirname "$P")" project
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Install
+        working-directory: project
+        run: npm install
+      - name: Copy Firebase SDK for offline use
+        working-directory: project
+        run: |
+          cp node_modules/firebase/firebase-app-compat.js www/
+          cp node_modules/firebase/firebase-firestore-compat.js www/
+          cp node_modules/firebase/firebase-auth-compat.js www/
+      - name: Add Android platform
+        working-directory: project
+        run: |
+          npx cap add android
+          sed -i 's#</manifest>#<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/></manifest>#' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
+      - name: Build debug APK
+        working-directory: project/android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kajer-hisab-apk
+          path: project/android/app/build/outputs/apk/debug/app-debug.apk
