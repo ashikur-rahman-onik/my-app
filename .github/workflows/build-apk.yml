@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +20,8 @@ jobs:
           P=$(find project_tmp -maxdepth 2 -name package.json | head -n1)
           test -n "$P"
           mv "$(dirname "$P")" project
+      - name: Set build number and repo
+        run: sed -i "s/__BUILD__/${{ github.run_number }}/; s#__REPO__#${{ github.repository }}#" project/www/index.html
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - uses: actions/setup-java@v4
@@ -25,22 +29,31 @@ jobs:
       - name: Install
         working-directory: project
         run: npm install
-      - name: Copy Firebase SDK for offline use
+      - name: Copy libraries for offline use
         working-directory: project
         run: |
-          cp node_modules/firebase/firebase-app-compat.js www/
-          cp node_modules/firebase/firebase-firestore-compat.js www/
-          cp node_modules/firebase/firebase-auth-compat.js www/
+          cp node_modules/firebase/firebase-app-compat.js node_modules/firebase/firebase-firestore-compat.js node_modules/firebase/firebase-auth-compat.js www/
+          cp node_modules/html2canvas/dist/html2canvas.min.js www/
+          cp node_modules/jspdf/dist/jspdf.umd.min.js www/
       - name: Add Android platform
         working-directory: project
         run: |
           npx cap add android
           sed -i 's#</manifest>#<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/></manifest>#' android/app/src/main/AndroidManifest.xml
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
           npx cap sync android
-      - name: Build debug APK
+      - name: Use fixed signing key (so updates install over old app)
+        run: |
+          mkdir -p ~/.android
+          cp project/debug.keystore ~/.android/debug.keystore
+      - name: Build APK
         working-directory: project/android
         run: chmod +x gradlew && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
+      - name: Rename APK
+        run: cp project/android/app/build/outputs/apk/debug/app-debug.apk kajer-hisab.apk
+      - uses: softprops/action-gh-release@v2
         with:
-          name: kajer-hisab-apk
-          path: project/android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: build-${{ github.run_number }}
+          name: কাজের হিসাব build ${{ github.run_number }}
+          make_latest: true
+          files: kajer-hisab.apk
