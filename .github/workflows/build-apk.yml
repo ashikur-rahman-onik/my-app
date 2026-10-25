@@ -10,16 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - name: Unzip project
         run: |
           set -e
-          ZIP=$(ls -1 *.zip | head -n1)
+          ZIP=""; BEST=0
+          for f in *.zip; do
+            t=$(git log -1 --format=%ct -- "$f"); t=${t:-0}
+            if [ "$t" -ge "$BEST" ]; then BEST=$t; ZIP="$f"; fi
+          done
           test -n "$ZIP"
+          echo "Using zip: $ZIP"
+          echo "ZIP_NAME=$ZIP" >> "$GITHUB_ENV"
           mkdir project_tmp
           unzip -q "$ZIP" -d project_tmp
           P=$(find project_tmp -maxdepth 2 -name package.json | head -n1)
           test -n "$P"
           mv "$(dirname "$P")" project
+          grep -q html2canvas project/package.json || { echo "::error::'$ZIP' পুরোনো zip। repo থেকে পুরোনো zip মুছে শুধু সর্বশেষ zip রাখুন।"; exit 1; }
       - name: Set build number and repo
         run: sed -i "s/__BUILD__/${{ github.run_number }}/; s#__REPO__#${{ github.repository }}#" project/www/index.html
       - uses: actions/setup-node@v4
