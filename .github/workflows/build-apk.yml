@@ -27,9 +27,12 @@ jobs:
           P=$(find project_tmp -maxdepth 2 -name package.json | head -n1)
           test -n "$P"
           mv "$(dirname "$P")" project
-          grep -q html2canvas project/package.json || { echo "::error::'$ZIP' পুরোনো zip। repo থেকে পুরোনো zip মুছে শুধু সর্বশেষ zip রাখুন।"; exit 1; }
+          grep -q jspdf project/package.json || { echo "::error::'$ZIP' পুরোনো zip। repo থেকে পুরোনো zip মুছে শুধু সর্বশেষ zip রাখুন।"; exit 1; }
       - name: Set build number and repo
-        run: sed -i "s/__BUILD__/${{ github.run_number }}/; s#__REPO__#${{ github.repository }}#" project/www/index.html
+        run: |
+          BN=$(date +%s)
+          echo "BN=$BN" >> "$GITHUB_ENV"
+          sed -i "s/__BUILD__/$BN/; s#__REPO__#${{ github.repository }}#" project/www/index.html
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - uses: actions/setup-java@v4
@@ -41,14 +44,13 @@ jobs:
         working-directory: project
         run: |
           cp node_modules/firebase/firebase-app-compat.js node_modules/firebase/firebase-firestore-compat.js node_modules/firebase/firebase-auth-compat.js www/
-          cp node_modules/html2canvas/dist/html2canvas.min.js www/
           cp node_modules/jspdf/dist/jspdf.umd.min.js www/
       - name: Add Android platform
         working-directory: project
         run: |
           npx cap add android
           sed -i 's#</manifest>#<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/></manifest>#' android/app/src/main/AndroidManifest.xml
-          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+          sed -i "s/versionCode 1/versionCode ${{ env.BN }}/; s/versionName \"1.0\"/versionName \"1.${{ env.BN }}\"/" android/app/build.gradle
           npx cap sync android
       - name: App icon and splash from logo
         continue-on-error: true
@@ -73,7 +75,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          tag_name: build-${{ github.run_number }}
-          name: কাজের হিসাব build ${{ github.run_number }}
+          tag_name: build-${{ env.BN }}
+          name: কাজের হিসাব build ${{ env.BN }}
           make_latest: true
           files: kajer-hisab.apk
