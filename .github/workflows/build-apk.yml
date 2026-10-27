@@ -49,7 +49,7 @@ jobs:
         working-directory: project
         run: |
           npx cap add android
-          sed -i 's#</manifest>#<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/></manifest>#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#</manifest>#<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/></manifest>#' android/app/src/main/AndroidManifest.xml
           sed -i "s/versionCode 1/versionCode ${{ env.BN }}/; s/versionName \"1.0\"/versionName \"1.${{ env.BN }}\"/" android/app/build.gradle
           npx cap sync android
       - name: App icon and splash from logo
@@ -65,9 +65,24 @@ jobs:
           cp project/debug.keystore ~/.android/debug.keystore
       - name: Build APK
         working-directory: project/android
-        run: chmod +x gradlew && ./gradlew assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/project/debug.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
       - name: Rename APK
         run: cp project/android/app/build/outputs/apk/debug/app-debug.apk kajer-hisab.apk
+      - name: APK info (versionCode and signer)
+        continue-on-error: true
+        run: |
+          touch release-notes.txt
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          {
+            echo "versionCode: $("$BT"/aapt dump badging kajer-hisab.apk | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
+            "$BT"/apksigner verify --print-certs kajer-hisab.apk | grep "SHA-256" | head -1
+          } | tee release-notes.txt >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: kajer-hisab-apk
@@ -79,3 +94,4 @@ jobs:
           name: কাজের হিসাব build ${{ env.BN }}
           make_latest: true
           files: kajer-hisab.apk
+          body_path: release-notes.txt
